@@ -1,44 +1,72 @@
 <script setup>
-import { useRouter } from 'vue-router'
+import { computed, onMounted, ref } from 'vue'
+import http from '@/api/http'
 import { useAuthStore } from '@/stores/auth'
+import AgencyDashboard from '@/components/dashboards/AgencyDashboard.vue'
+import PmDashboard from '@/components/dashboards/PmDashboard.vue'
+import StaffDashboard from '@/components/dashboards/StaffDashboard.vue'
+import QaDashboard from '@/components/dashboards/QaDashboard.vue'
+import FinanceDashboard from '@/components/dashboards/FinanceDashboard.vue'
+import ClientDashboard from '@/components/dashboards/ClientDashboard.vue'
 
 const auth = useAuthStore()
-const router = useRouter()
 
-async function logout() {
-  await auth.logout()
-  router.push({ name: 'login' })
+// Maps the API's `role` discriminator to a component
+const componentMap = {
+  agency_overview: AgencyDashboard,
+  project_manager: PmDashboard,
+  staff: StaffDashboard,
+  qa: QaDashboard,
+  finance: FinanceDashboard,
+  client: ClientDashboard,
 }
+
+const data = ref(null)
+const loading = ref(true)
+const error = ref('')
+
+const activeComponent = computed(() => componentMap[data.value?.role] ?? null)
+
+async function load() {
+  loading.value = true
+  error.value = ''
+  try {
+    const res = await http.get('/dashboard')
+    data.value = res.data.data // Resource-style wrapper: data.data
+  } catch (e) {
+    error.value = e.response
+      ? `Failed to load dashboard (HTTP ${e.response.status}).`
+      : 'Cannot reach the server.'
+  } finally {
+    loading.value = false
+  }
+}
+
+onMounted(load)
 </script>
 
 <template>
-  <div class="dashboard-shell">
-    <aside class="sidebar">
-      <div class="brand-mark"><span>sf</span><i></i></div>
-      <p class="workspace-label">Your workspace</p>
-      <nav class="sidebar-nav" aria-label="Main navigation">
-        <a class="nav-link active" href="#"><span class="nav-symbol">&#9632;</span> Overview</a>
-        <a class="nav-link" href="#"><span class="nav-symbol">&#9711;</span> Projects <span class="nav-count">04</span></a>
-        <a class="nav-link" href="#"><span class="nav-symbol">&#10003;</span> Tasks <span class="nav-count">12</span></a>
-        <a class="nav-link" href="#"><span class="nav-symbol">&#9716;</span> Calendar</a>
-      </nav>
-      <div class="sidebar-bottom"><p>Signed in as</p><strong>{{ auth.user?.name || 'Studio member' }}</strong><button @click="logout">Log out <span>&#8599;</span></button></div>
-    </aside>
+  <div class="dashboard-view">
+    <header class="dashboard-header">
+      <div><p class="eyebrow">Studio overview</p><h1>Good morning, {{ auth.user?.name?.split(' ')[0] || 'there' }}.</h1></div>
+      <div class="dashboard-date">{{ new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) }}</div>
+    </header>
 
-    <main class="dashboard-main">
-      <header class="topbar"><div><p class="eyebrow">Monday, September 28, 2026</p><h1>Good morning, {{ auth.user?.name?.split(' ')[0] || 'there' }}.</h1></div><button class="avatar" aria-label="Account">{{ auth.user?.name?.charAt(0) || 'S' }}</button></header>
-      <section class="intro-row"><div><p class="section-kicker">Your creative rhythm</p><h2>A little progress<br /><em>goes a long way.</em></h2></div><p class="intro-note">Here is what is moving across your studio today. Keep the main thing the main thing.</p></section>
-      <section class="stats-grid" aria-label="Workspace summary"><div class="stat-card stat-featured"><span>Active projects</span><strong>04</strong><small>+2 this month <b>&#8593;</b></small><div class="mini-bars"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div></div><div class="stat-card"><span>Open tasks</span><strong>12</strong><small>3 due this week</small></div><div class="stat-card"><span>Team pulse</span><strong>86<sup>%</sup></strong><small>Looking healthy <b class="green-dot">&#9679;</b></small></div></section>
-      <section class="lower-grid"><div class="panel projects-panel"><div class="panel-heading"><div><p class="section-kicker">In motion</p><h3>Recent projects</h3></div><a href="#">View all <span>&#8594;</span></a></div><div class="project-list"><article><span class="project-color coral"></span><div><strong>Northstar identity</strong><p>Brand direction <span>·</span> Updated 2h ago</p></div><span class="status in-progress">In progress</span></article><article><span class="project-color yellow"></span><div><strong>Sunday market site</strong><p>Web design <span>·</span> Updated yesterday</p></div><span class="status review">In review</span></article><article><span class="project-color teal"></span><div><strong>Field notes campaign</strong><p>Content strategy <span>·</span> Updated Sep 24</p></div><span class="status planning">Planning</span></article></div></div><div class="panel quote-panel"><span class="quote-mark">&#8220;</span><p>Great things are done by a series of small things brought together.</p><small>— Vincent van Gogh</small><div class="quote-line"></div></div></section>
-    </main>
+    <div v-if="loading" class="dashboard-state"><span class="loading-pulse"></span><p>Gathering your studio overview...</p></div>
+
+    <div v-else-if="error" class="dashboard-error">
+      <p>{{ error }}</p>
+      <button @click="load">Try again <span>&#8594;</span></button>
+    </div>
+
+    <component v-else-if="activeComponent" :is="activeComponent" :data="data" />
+
+    <p v-else class="dashboard-state">
+      {{ data?.message ?? 'No dashboard available for your role.' }}
+    </p>
   </div>
 </template>
 
 <style scoped>
-.dashboard-shell { min-height: 100vh; display: flex; background: var(--paper); }
-.brand-mark { display: flex; align-items: center; gap: .65rem; color: var(--ink); font-size: 1.4rem; font-weight: 800; letter-spacing: -.08em; }.brand-mark i { width: 9px; height: 9px; display: block; border-radius: 50%; background: var(--coral); }
-.sidebar { display: flex; width: 240px; flex-direction: column; padding: 2.4rem 1.6rem 1.5rem; border-right: 1px solid var(--line); background: #fbfcf8; }.workspace-label { margin-top: 4.5rem; color: #9ca9a9; font-size: .68rem; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; }.sidebar-nav { margin-top: 1rem; }.nav-link { display: flex; align-items: center; gap: .75rem; padding: .8rem .7rem; color: #82908e; font-size: .88rem; text-decoration: none; border-radius: 3px; }.nav-link.active { background: #e6f2ee; color: var(--teal); font-weight: 800; }.nav-symbol { width: 1rem; font-size: .78rem; text-align: center; }.nav-count { margin-left: auto; color: #aebbb8; font-size: .7rem; }.sidebar-bottom { margin-top: auto; padding-top: 1.5rem; border-top: 1px solid var(--line); }.sidebar-bottom p { color: #a0adaa; font-size: .7rem; }.sidebar-bottom strong { display: block; margin-top: .35rem; font-size: .87rem; }.sidebar-bottom button { margin-top: 1.2rem; padding: 0; border: 0; background: none; color: var(--coral-deep); font-size: .78rem; font-weight: 800; }.sidebar-bottom button span { margin-left: .3rem; }
-.dashboard-main { width: min(1200px, 100%); margin: 0 auto; padding: 2.8rem clamp(1.5rem, 5vw, 5rem); }.topbar { display: flex; align-items: flex-start; justify-content: space-between; }.eyebrow, .section-kicker { color: var(--coral-deep); font-size: .7rem; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; }.topbar h1 { margin-top: .5rem; font-family: Georgia, serif; font-size: clamp(2rem, 4vw, 3rem); font-weight: 400; letter-spacing: -.055em; }.avatar { display: grid; width: 2.6rem; height: 2.6rem; place-items: center; border: 0; border-radius: 50%; background: var(--yellow); color: var(--ink); font-family: Georgia, serif; font-size: 1.15rem; }.intro-row { display: flex; align-items: end; justify-content: space-between; margin-top: 5rem; }.intro-row h2 { margin-top: .55rem; font-family: Georgia, serif; font-size: clamp(2.3rem, 5vw, 4.2rem); font-weight: 400; line-height: .96; letter-spacing: -.065em; }.intro-row h2 em { color: var(--teal); font-style: italic; }.intro-note { max-width: 250px; margin-bottom: .3rem; color: var(--muted); font-size: .85rem; }.stats-grid { display: grid; grid-template-columns: 1.5fr 1fr 1fr; gap: 1rem; margin-top: 3.5rem; }.stat-card { position: relative; min-height: 155px; padding: 1.4rem; border: 1px solid var(--line); background: var(--surface); }.stat-card > span { color: var(--muted); font-size: .77rem; }.stat-card strong { display: block; margin-top: .55rem; color: var(--ink); font-family: Georgia, serif; font-size: 3rem; font-weight: 400; letter-spacing: -.06em; }.stat-card small { color: var(--muted); font-size: .72rem; }.stat-card small b { color: var(--teal); }.stat-featured { overflow: hidden; border: 0; background: var(--teal); color: #e8f1ed; }.stat-featured > span, .stat-featured strong { color: #fff; }.stat-featured small { color: #b9d5ce; }.mini-bars { position: absolute; right: 1.3rem; bottom: 1.35rem; display: flex; align-items: end; gap: 4px; height: 48px; }.mini-bars i { display: block; width: 8px; background: var(--yellow); }.mini-bars i:nth-child(1) { height: 35%; }.mini-bars i:nth-child(2) { height: 55%; }.mini-bars i:nth-child(3) { height: 45%; }.mini-bars i:nth-child(4) { height: 80%; }.mini-bars i:nth-child(5) { height: 60%; }.mini-bars i:nth-child(6) { height: 90%; }.mini-bars i:nth-child(7) { height: 100%; }.lower-grid { display: grid; grid-template-columns: 1.65fr 1fr; gap: 1rem; margin-top: 1rem; }.panel { border: 1px solid var(--line); background: var(--surface); }.projects-panel { padding: 1.6rem; }.panel-heading { display: flex; align-items: start; justify-content: space-between; }.panel-heading h3 { margin-top: .45rem; font-family: Georgia, serif; font-size: 1.65rem; font-weight: 400; letter-spacing: -.04em; }.panel-heading a { color: var(--teal); font-size: .76rem; font-weight: 800; text-decoration: none; }.panel-heading a span { margin-left: .35rem; font-size: 1.1rem; }.project-list { margin-top: 1.3rem; }.project-list article { display: flex; align-items: center; gap: .9rem; padding: 1rem 0; border-top: 1px solid var(--line); }.project-color { width: 10px; height: 10px; flex: 0 0 auto; border-radius: 50%; }.coral { background: var(--coral); }.yellow { background: var(--yellow); }.teal { background: var(--teal); }.project-list article div { min-width: 0; flex: 1; }.project-list strong { font-size: .88rem; }.project-list p { margin-top: .25rem; color: var(--muted); font-size: .72rem; }.project-list p span { color: #b3bfbb; }.status { padding: .3rem .55rem; font-size: .65rem; font-weight: 800; }.in-progress { background: #fff0ed; color: var(--coral-deep); }.review { background: #fff8dd; color: #9b791b; }.planning { background: var(--teal-soft); color: var(--teal); }.quote-panel { position: relative; overflow: hidden; padding: 2rem; background: var(--yellow); }.quote-mark { display: block; color: var(--coral-deep); font-family: Georgia, serif; font-size: 4rem; line-height: .65; }.quote-panel p { position: relative; z-index: 1; max-width: 240px; margin-top: 1rem; font-family: Georgia, serif; font-size: 1.45rem; line-height: 1.15; letter-spacing: -.035em; }.quote-panel small { display: block; margin-top: 1.5rem; font-size: .72rem; }.quote-line { position: absolute; right: -30px; bottom: -70px; width: 190px; height: 190px; border: 1px solid rgba(23, 33, 43, .25); border-radius: 50%; }
-@media (max-width: 850px) { .sidebar { width: 190px; }.intro-row { margin-top: 3.5rem; }.lower-grid { grid-template-columns: 1fr; } }
-@media (max-width: 620px) { .dashboard-shell { display: block; }.sidebar { width: 100%; padding: 1.2rem 1.3rem; border-right: 0; border-bottom: 1px solid var(--line); }.workspace-label, .sidebar-bottom { display: none; }.sidebar-nav { display: flex; gap: .2rem; margin-top: 1rem; overflow-x: auto; }.nav-link { white-space: nowrap; }.dashboard-main { padding: 2rem 1.3rem 3rem; }.intro-row { display: block; }.intro-note { margin-top: 1.2rem; }.stats-grid { grid-template-columns: 1fr 1fr; margin-top: 2.5rem; }.stat-featured { grid-column: 1 / -1; }.project-list article { align-items: start; }.status { margin-left: auto; white-space: nowrap; } }
+.dashboard-view { max-width: 1280px; margin: 0 auto; }.dashboard-header { display: flex; align-items: end; justify-content: space-between; margin-bottom: 4rem; }.eyebrow { color: var(--coral-deep); font-size: .7rem; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; }.dashboard-header h1 { margin-top: .5rem; font-family: Georgia, serif; font-size: clamp(2rem, 4vw, 3.4rem); font-weight: 400; letter-spacing: -.06em; }.dashboard-date { padding: .5rem .8rem; border: 1px solid var(--line); color: var(--muted); font-size: .72rem; }.dashboard-state { display: flex; min-height: 220px; align-items: center; justify-content: center; gap: .8rem; color: var(--muted); font-size: .88rem; }.loading-pulse { width: .7rem; height: .7rem; border-radius: 50%; background: var(--coral); animation: pulse 1.2s infinite ease-in-out; }.dashboard-error { padding: 1.2rem 1.4rem; border-left: 3px solid var(--coral); background: #fff0ed; color: var(--coral-deep); }.dashboard-error button { margin-top: .8rem; padding: 0; border: 0; background: none; color: inherit; font-size: .8rem; font-weight: 800; }.dashboard-error button span { margin-left: .3rem; }@keyframes pulse { 0%, 100% { opacity: .35; transform: scale(.8); } 50% { opacity: 1; transform: scale(1.2); } }@media (max-width: 600px) { .dashboard-header { display: block; margin-bottom: 2.5rem; }.dashboard-date { display: inline-block; margin-top: 1rem; } }
 </style>
